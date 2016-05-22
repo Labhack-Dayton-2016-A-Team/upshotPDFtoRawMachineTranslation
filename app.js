@@ -19,7 +19,9 @@
 var express    = require('express'),
   app          = express(),
   watson       = require('watson-developer-cloud'),
-  fs           = require('fs');
+  fs           = require('fs'),
+  bluemix    = require('./config/bluemix'),
+  extend     = require('util')._extend;
 // Bootstrap application settings
 require('./config/express')(app);
 
@@ -30,6 +32,14 @@ var credentials = {
   version_date: '2015-12-01',
   version: 'v1'
 };
+
+var langCredential =  extend({
+  username: '<username>',
+  password: '<password>',
+  version: 'v2'
+}, bluemix.getServiceCreds('language-translation')); // VCAP_SERVICES
+
+var language_translation = watson.language_translation(langCredential);
 
 var document_conversion = watson.document_conversion(credentials);
 
@@ -92,12 +102,29 @@ app.get('/api/convert', function(req, res, next) {
     if (err) {
       return next(err);
     }
-    var type = types[req.query.conversion_target];
-    res.type(type);
-    if (req.query.download) {
-      res.setHeader('content-disposition','attachment; filename=output-' + Date.now() + '.' + type);
-    }
-    res.send(data);
+
+    console.log("Test data incoming!!!!!!");
+    console.log(data)
+    console.log("Test data ends@@@@@@");
+    var langParams = {text: data,source : 'ar', target: 'en'};
+    language_translation.translate(langParams, function(err, models) {
+      if (err){
+        console.log("ERRROORRRRRR HAPPNEED");
+        console.log(err);
+        return next(err);
+      }
+      else{
+        //res.json(models);
+        //models["translations"]["translateion"] = models["translations"]["translation"].replace("\\n"," ");
+        console.log(models);
+        var type = types[req.query.conversion_target];
+        res.type(type);
+        if (req.query.download) {
+          res.setHeader('content-disposition','attachment; filename=output-' + Date.now() + '.' + type);
+        }
+        res.send(models);
+      }
+    });
   });
 });
 
@@ -114,6 +141,17 @@ app.get('/files/:id', function(req, res) {
     }
   })
   .pipe(res);
+});
+
+app.post('/api/translate', function(req, res, next) {
+  console.log('/v2/translate');
+  var params = extend({ 'X-WDC-PL-OPT-OUT': req.header('X-WDC-PL-OPT-OUT')}, req.body);
+  language_translation.translate(params, function(err, models) {
+    if (err)
+      return next(err);
+    else
+      res.json(models);
+  });
 });
 
 // error-handler settings
